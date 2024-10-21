@@ -1,4 +1,97 @@
-from pckg_util import check_gpu_and_torch_compatibility
+#from pckg_util import check_gpu_and_torch_compatibility
+import importlib.metadata
+import logging
+import os
+import subprocess
+import sys
+
+
+
+def install_and_import(package, version="", params="", link="", packageimportname=""):
+    try:
+        if importlib.metadata.version(package) != version:
+            raise ImportError
+        importlib.import_module(package)
+    except ImportError:
+        pass
+
+        installation_str = package
+        installation_cmd_list = ["install"]
+
+        if version:
+            installation_str += "==" + version
+        installation_cmd_list.append(installation_str)
+
+        if params:
+            installation_cmd_list.append(params)
+
+        if link:
+            installation_cmd_list.append(link)
+        try:
+            subprocess.check_call([sys.executable, "-m", "ensurepip", "--upgrade"])
+            subprocess.check_call([sys.executable, "-m", "pip", *installation_cmd_list])
+        except Exception as e:
+            print(e)
+    finally:
+        if not packageimportname:
+            globals()[package] = importlib.import_module(package)
+        else:
+            globals()[packageimportname] = importlib.import_module(packageimportname)
+
+
+def execute_bash_command(cmd):
+    tenv = os.environ.copy()
+    tenv["LC_ALL"] = "C"
+    bash_command = cmd
+    process = subprocess.Popen(
+        bash_command.split(), stdout=subprocess.PIPE, env=tenv
+    )
+    return process.communicate()[0]
+
+
+def check_gpu_and_torch_compatibility():
+    try:
+        import platform
+
+        if platform.system() == "Windows":
+            install_and_import(
+                "torch",
+                "1.12.1+cu116",
+                "-f",
+                "https://download.pytorch.org/whl/torch_stable.html",
+            )
+        else:
+            bash_command = "nvidia-smi --query-gpu=name --format=csv"
+            output = ""
+            try:
+                output = execute_bash_command(bash_command).decode()
+            except Exception as e:
+                try:
+                    import torch
+                except Exception as e:
+                    install_and_import("torch")
+
+
+            if "NVIDIA A100" in output:
+                install_and_import(
+                    "torch",
+                    "2.1.1",
+                    "-f",
+                    "https://download.pytorch.org/whl/cu118",
+                )
+                install_and_import(
+                    "torchvision",
+                    "0.16.1",
+                    "-f",
+                    "https://download.pytorch.org/whl/cu118",
+                )
+            else:
+                try:
+                    import torch
+                except Exception as e:
+                    install_and_import("torch")
+    except OSError as e:
+        logging.info("GPU device is not available")
 
 check_gpu_and_torch_compatibility()
 
@@ -94,7 +187,8 @@ def get_extensions():
                 extra_compile_args["nvcc"].append("-ccbin={}".format(CC))
 
     include_dirs = [extensions_dir]
-
+    include_dirs = [e.replace("/app/", "") for e in include_dirs]
+    sources = [e.replace("/app/", "") for e in sources]
     ext_modules = [
         extension(
             "detectron2._C",
@@ -147,18 +241,25 @@ PROJECTS = {
     "detectron2.projects.point_rend": "projects/PointRend/point_rend",
     "detectron2.projects.deeplab": "projects/DeepLab/deeplab",
     "detectron2.projects.panoptic_deeplab": "projects/Panoptic-DeepLab/panoptic_deeplab",
-}
+    #"detectron2.model_zoo.configs": "configs",
+    #""
+    }
 
 setup(
     name="detectron2",
     version=get_version(),
+    #include_package_data = True,
     author="FAIR",
     url="https://github.com/facebookresearch/detectron2",
     description="Detectron2 is FAIR's next-generation research "
     "platform for object detection and segmentation.",
     packages=find_packages(exclude=("configs", "tests*")) + list(PROJECTS.keys()),
     package_dir=PROJECTS,
-    package_data={"detectron2.model_zoo": get_model_zoo_configs()},
+    include_package_data=True,
+    #packages=find_packages(exclude=("configs", "tests*")) + list(PROJECTS.keys()),
+    #package_dir=PROJECTS,
+    #data_files = {"detectron2.model_zoo": get_model_zoo_configs()},
+    #package_data={"detectron2.model_zoo": get_model_zoo_configs()},
     python_requires=">=3.7",
     install_requires=[
         # These dependencies are not pure-python.

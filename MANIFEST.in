@@ -1,0 +1,4 @@
+include detectron2/model_zoo/configs/*/*.yaml
+include detectron2/model_zoo/configs/*.yaml
+include detectron2/layers/csrc/*.*
+include detectron2/layers/csrc/*/*
